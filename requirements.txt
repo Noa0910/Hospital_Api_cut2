@@ -1,0 +1,12 @@
+python-dotenv
+pandas
+xlrd
+mysql-connector-python
+streamlit
+watchdog
+openpyxl
+streamlit-option-menu
+requests
+uvicorn
+fastapi
+python-multipart
