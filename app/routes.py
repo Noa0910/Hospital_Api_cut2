@@ -2,31 +2,38 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 from app.database import get_db_connection
 from app.models import (
-    PatientCreate, Patient, ResponsibleCreate, Responsible, 
-    DiagnosisCreate, Diagnosis, HospitalCreate, Hospital, 
+    PatientCreate, Patient, ResponsibleCreate, Responsible,
+    DiagnosisCreate, Diagnosis, HospitalCreate, Hospital,
     AppointmentCreate, Appointment, PatientResponsible
 )
 import pandas as pd
 import io
+from datetime import date
 
 router = APIRouter()
 
 @router.post("/patients/", response_model=Patient)
 def create_patient(patient: PatientCreate):
+    # Crear un nuevo paciente
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute("""
-        INSERT INTO patients (first_name, last_name, diagnosis_id, hospital_id, responsible_id, date_of_birth)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """, (patient.first_name, patient.last_name, patient.diagnosis_id, patient.hospital_id, patient.responsible_id, patient.date_of_birth))
+        INSERT INTO patients (first_name, last_name, diagnosis_id, hospital_id, date_of_birth)
+        VALUES (%s, %s, %s, %s, %s)
+        """, (patient.first_name, patient.last_name, patient.diagnosis_id, patient.hospital_id, patient.date_of_birth))
     connection.commit()
     patient_id = cursor.lastrowid
     cursor.close()
     connection.close()
+    
+   
+    patient.date_of_birth = patient.date_of_birth.isoformat() if patient.date_of_birth else None
+    
     return JSONResponse(status_code=200, content={"id": patient_id, **patient.dict()})
 
 @router.post("/responsibles/", response_model=Responsible)
 def create_responsible(responsible: ResponsibleCreate):
+    
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute("""
@@ -41,6 +48,7 @@ def create_responsible(responsible: ResponsibleCreate):
 
 @router.post("/diagnoses/", response_model=Diagnosis)
 def create_diagnosis(diagnosis: DiagnosisCreate):
+    
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute("""
@@ -55,6 +63,7 @@ def create_diagnosis(diagnosis: DiagnosisCreate):
 
 @router.post("/hospitals/", response_model=Hospital)
 def create_hospital(hospital: HospitalCreate):
+   
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute("""
@@ -69,33 +78,53 @@ def create_hospital(hospital: HospitalCreate):
 
 @router.post("/appointments/", response_model=Appointment)
 def create_appointment(appointment: AppointmentCreate):
+    
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute("""
-        INSERT INTO appointments (patient_id, hospital_id, responsible_id, appointment_date, notes)
-        VALUES (%s, %s, %s, %s, %s)
-        """, (appointment.patient_id, appointment.hospital_id, appointment.responsible_id, appointment.appointment_date, appointment.notes))
+        INSERT INTO appointments (patient_id, hospital_id, appointment_date, notes)
+        VALUES (%s, %s, %s, %s)
+        """, (appointment.patient_id, appointment.hospital_id, appointment.appointment_date, appointment.notes))
     connection.commit()
     appointment_id = cursor.lastrowid
     cursor.close()
     connection.close()
+    
+    
+    appointment.appointment_date = appointment.appointment_date.isoformat() if appointment.appointment_date else None
+    
     return JSONResponse(status_code=200, content={"id": appointment_id, **appointment.dict()})
 
 @router.post("/patient-responsibles/")
 def create_patient_responsible(patient_responsible: PatientResponsible):
+    
     connection = get_db_connection()
     cursor = connection.cursor()
+  
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM patient_responsible 
+        WHERE patient_id = %s AND responsible_id = %s
+    """, (patient_responsible.patient_id, patient_responsible.responsible_id))
+    
+    exists = cursor.fetchone()[0]
+    
+    if exists:
+        return JSONResponse(status_code=400, content={"message": "La relación ya existe."})
+    
     cursor.execute("""
         INSERT INTO patient_responsible (patient_id, responsible_id)
         VALUES (%s, %s)
-        """, (patient_responsible.patient_id, patient_responsible.responsible_id))
+    """, (patient_responsible.patient_id, patient_responsible.responsible_id))
+    
     connection.commit()
     cursor.close()
     connection.close()
-    return JSONResponse(status_code=200, content={"message": "Relationship created successfully."})
+    return JSONResponse(status_code=200, content={"message": "Relación creada exitosamente."})
 
 @router.post("/upload-excel/")
 async def upload_excel(file: UploadFile = File(...), table: str = None):
+   
     try:
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents))
@@ -106,9 +135,9 @@ async def upload_excel(file: UploadFile = File(...), table: str = None):
         if table == "patients":
             for index, row in df.iterrows():
                 cursor.execute("""
-                    INSERT INTO patients (first_name, last_name, diagnosis_id, hospital_id, responsible_id, date_of_birth)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (row['first_name'], row['last_name'], row['diagnosis_id'], row['hospital_id'], row['responsible_id'], row['date_of_birth']))
+                    INSERT INTO patients (first_name, last_name, diagnosis_id, hospital_id, date_of_birth)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (row['first_name'], row['last_name'], row['diagnosis_id'], row['hospital_id'], row['date_of_birth']))
         elif table == "responsibles":
             for index, row in df.iterrows():
                 cursor.execute("""
@@ -130,9 +159,9 @@ async def upload_excel(file: UploadFile = File(...), table: str = None):
         elif table == "appointments":
             for index, row in df.iterrows():
                 cursor.execute("""
-                    INSERT INTO appointments (patient_id, hospital_id, responsible_id, appointment_date, notes)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (row['patient_id'], row['hospital_id'], row['responsible_id'], row['appointment_date'], row.get('notes')))
+                    INSERT INTO appointments (patient_id, hospital_id, appointment_date, notes)
+                    VALUES (%s, %s, %s, %s)
+                """, (row['patient_id'], row['hospital_id'], row['appointment_date'], row['notes']))
         elif table == "patient_responsibles":
             for index, row in df.iterrows():
                 cursor.execute("""
